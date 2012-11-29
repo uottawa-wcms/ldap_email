@@ -1,0 +1,152 @@
+<?php
+
+  /**
+   * The default pattern for fake email addresses
+   */
+  define('LDAP_EMAIL_DEFAULT_PATTERN', '`.*@fake-email\.uottawa\.ca`i');
+
+  /**
+   * Checks whether or not the user needs to enter more information about
+   * their profile.
+   * @return boolean TRUE if the user's profile is valid, otherwise FALSE.
+   */
+  function ldap_email_validate_user_profile() {
+    global $user;
+    // ignore anon. users and the admin user
+    if ($user->uid > 1) {
+      // Check to see if their email matches the 'fake' pattern
+      $pattern = variable_get('ldap_email_pattern', LDAP_EMAIL_DEFAULT_PATTERN);
+      if (preg_match($pattern, $user->mail)) {
+        return FALSE;
+      }
+    }
+    return TRUE;
+  }
+
+  /**
+   * Implements hook_enable().
+   */
+  function ldap_email_enable() {
+    variable_set('ldap_email_pattern',
+      variable_get('ldap_email_pattern', LDAP_EMAIL_DEFAULT_PATTERN)
+    );
+  }
+
+  /**
+   * Implements hook_init().
+   */
+  function ldap_email_init() {
+    global $user;
+    if (!ldap_email_validate_user_profile()) {
+      // this page allows the user to fill in the blanks in their
+      $url = 'user/' . $user->uid . '/profile-update';
+      if (current_path() != $url && current_path() != 'user/logout') {
+        // remove destination
+        if (isset($_GET['destination'])) {
+          unset($_GET['destination']);
+        }
+        // redirect to the profile update page
+        drupal_goto($url, array(
+          'query' => array(
+            'next' => current_path()
+          )
+        ));
+      }
+    }
+  }
+
+  /**
+   * Implements hook_menu().
+   */
+  function ldap_email_menu() {
+    return array(
+      'user/%user/profile-update' => array(
+        'title' => 'Update Profile',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('ldap_email_update_form', 1),
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK,
+      ),
+      'admin/config/people/ldap_email' => array(
+        'title' => 'LDAP Login Email',
+        'description' => 'Settings for allowing email addresses to be set upon
+          login',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('ldap_email_admin_form'),
+        'access arguments' => array('access administration pages'),
+      ),
+    );
+  }
+
+  /**
+   * Form for allowing the administrator to update the settings.
+   * @param array $form FAPI array
+   * @param array $form_state FAPI state array
+   * @return array FAPI array
+   */
+  function ldap_email_admin_form($form, &$form_state) {
+    $form = array();
+    $form['ldap_email_pattern'] = array(
+      '#title' => t('Fake Email Pattern'),
+      '#type' => 'textfield',
+      '#description' => t('Enter the pattern that will match fake email addresses loaded by LDAP.'),
+      '#required' => TRUE,
+      '#default_value' => variable_get('ldap_email_pattern', LDAP_EMAIL_DEFAULT_PATTERN)
+    );
+    return system_settings_form($form);
+  }
+
+  /**
+   * Validation method for updating the email
+   * @param array $form FAPI form
+   * @param array $form_state FAPI state form
+   */
+  function ldap_email_update_form_validate($form, &$form_state) {
+    // check to make sure the email address is a valid email address
+    if (!filter_var($form_state['values']['email_address'], FILTER_VALIDATE_EMAIL)) {
+      form_set_error('email_address', t('You must specify a valid email address.'));
+    }
+    $existing = db_query('SELECT * FROM {users} WHERE mail = :mail', array(
+      ':mail' => $form_state['values']['email_address'],
+    ))->rowCount();
+    if ($existing) {
+      form_set_error('email_address', t('This email address is already in use on this system.'));
+    }
+  }
+
+  /**
+   * Form submit method for updating the email
+   * @param type $form
+   * @param type $form_state
+   */
+  function ldap_email_update_form_submit($form, &$form_state) {
+    global $user;
+    // save the new email
+    if (user_save($user, array(
+      'mail' => $form_state['values']['email_address']
+    ))) {
+      drupal_set_message(t('Profile saved.'));
+      // redirect to where they were trying to go
+      $form_state['redirect'] = isset($_GET['next']) ? $_GET['next'] : '/';
+    }
+  }
+
+  /**
+   * Form that allows the user to update their email address on login
+   * @param array $form FAPI array
+   * @param array $form_state FAPI state array
+   * @return array FAPI array
+   */
+  function ldap_email_update_form($form, &$form_state) {
+    $form = array();
+    $form['email_address'] = array(
+      '#type' => 'textfield',
+      '#title' => 'Email Address',
+      '#required' => true,
+    );
+    $form['submit'] = array(
+      '#type' => 'submit',
+      '#value' => 'Save Profile',
+    );
+    return $form;
+  }

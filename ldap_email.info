@@ -1,0 +1,7 @@
+name = LDAP Email Update
+description = "Allows users to specify their email address upon logging in"
+package = "Lightweight Directory Access Protocol"
+
+core = 7.x
+
+files[] = ldap_email.module
