@@ -5,3 +5,10 @@ package = "Lightweight Directory Access Protocol"
 core = 7.x
 
 files[] = ldap_email.module
+
+
+; Information added by drush on 2013-02-06
+version = "unknown"
+project = "ldap_email"
+datestamp = "1360163297"
+
